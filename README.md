@@ -1,4 +1,5 @@
 # sheep-movement
 
 
-From article : https://www.nature.com/articles/s41567-022-01769-8.epdf?sharing_token=CWZOuqokDEO3UxkUdIxxrNRgN0jAjWel9jnR3ZoTv0NJlnl6ZyJeu3LmDo0L-8rhlLlIaX1YWaeIIFlgQ16MVaNYnZ-8tmrBD1AUH7635X9Ou7LjxSwnoXLiCVix7AzNg068cOTh1qo4RysOpICYZf2IscK6zCkLJbVCtO6MH_g%3D
+From article :  [6] Luis Gómez-Nava, Richard Bon and Fernando Peruani. Intermittent collective motion in sheep results from alternating the role of leader and follower, Nature Physics, 2022.
+Accessible through : https://amor.cms.hu-berlin.de/~gomezlui/publications.html in read only mode
