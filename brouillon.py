@@ -11,16 +11,24 @@ def cartesianND(t) : #t un tableau nD en coordonnées polaires sur la dernière 
   
       
   
-def frame_producer(Pop, box_size):  
+def frame_producer(Pop, ax, box_size):  
+    
+    
+    im_list = []
+    
     cart_spd= cartesianND(Pop[:,1])
-    fig = plt.figure(figsize = (10, 10))
 
-    mplt.Quiver(Pop[:,0,0], Pop[:,0,1], cart_spd[:,0], cart_spd[:,1],
-                      width = 0.005, scale = 25, color = color_list[:len(Pop)])
-    mplt.line.hlines([0, box_size], 0, box_size, ls = '--')
-    mplt.line.vlines([0, box_size], 0, box_size, ls = '--')
+    im_list.append(ax.quiver(Pop[:,0,0], Pop[:,0,1], cart_spd[:,0], cart_spd[:,1],
+                      width = 0.005, scale = 25, color = color_list[:len(Pop)]))
 
     
+    #im_list.append(mplt.collections.LineCollection([[[0,   0], [0,   100]],
+    #                                                [[0, 100], [100, 100]],
+    #                                                [[0,   0], [100,   0]],
+    #                                                [[100, 0], [100, 100]]], ls = '--'))
+    
+    return im_list
+
   
     
   
@@ -77,7 +85,7 @@ class Simulation():
     
     self.Population[:,1,1] += (self.modele.A * self.modele.G(self.Population)).sum(axis = 0
                    ) + 2*self.modele.D*self.modele.eps(size = (self.N))
-    
+
     self.Population[:,0] += cartesianND(self.Population[:,1])
     
     if self.limite == 'BVK':
@@ -101,27 +109,29 @@ class Simulation():
     else:
         return [fig.gca()]
   def Simulate(self, n_step, animate = False):
+      
     if self.affichage and animate :
         figure, ax = plt.subplots()
-        animation_list = [[None]] * n_step
+        Pops = np.empty((n_step, self.N, 2, 2))
     for k in range(n_step):
       if self.affichage and animate:
-        animation_list[k] = self.affiche_population(for_ani = True)
+        Pops[k] = self.Population.copy()
       elif self.affichage:
-          self.affiche_population()
+        self.affiche_population()
       self.evolve()
       print(f'Evolved step {k}')
+      
     print(f'Evolved for {n_step} steps')
+    
+    
     if self.affichage and animate:
-      ani = animation.ArtistAnimation(figure, animation_list, interval=50, blit=True,
-                                      repeat_delay=1000)
-      ani.save('test_video.mp4')
+      ani = mplt.animation.FuncAnimation(figure, frame_producer, frames = Pops, fargs = (ax, self.box_size))
+      ani.save('test_video_2.mp4')
     elif self.affichage:
       self.affiche_population()
   
   
 #Test zone 
-
 
 y = Model(3)
 
