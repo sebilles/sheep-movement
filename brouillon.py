@@ -6,6 +6,9 @@ from matplotlib import animation as m_ani
 import matplotlib as mplt
 import time
 
+rng = np.random.default_rng()
+
+
 color_list = list(mplt.colors.TABLEAU_COLORS)
 
 def cartesianND(t) : #t un tableau nD en coordonnées polaires sur la dernière dimension (n1, n2..., n(d-1), 2)
@@ -21,14 +24,20 @@ def frame_producer(Pop, fig, ax, box_size):
     
     cart_spd= cartesianND(Pop[:,1])
 
-    im_list.append(ax.quiver(Pop[:,0,0], Pop[:,0,1], cart_spd[:,0], cart_spd[:,1],
-                      width = 0.005, scale = 25, color = color_list[:len(Pop)]))
+    if len(Pop) <= len(color_list):
+
+        im_list.append(ax.quiver(Pop[:,0,0], Pop[:,0,1], cart_spd[:,0], cart_spd[:,1],
+                          width = 0.005, scale = 25, color = color_list[:len(Pop)]))
+        
+    else :
+        im_list.append(ax.quiver(Pop[:,0,0], Pop[:,0,1], cart_spd[:,0], cart_spd[:,1],
+                          width = 0.005, scale = 25))
 
     im_list.append(ax.hlines([0, box_size], 0, box_size, ls = '--'))
     im_list.append(ax.vlines([0, box_size], 0, box_size, ls = '--'))
     #im_list.append(mplt.collections.LineCollection([[[0,   0], [0,   100]],
     #                                                [[0, 100], [100, 100]],
-    #                                                [[0,   0], [100,   0]],
+    #                                                [[0,   0], [100,   0]],grav = np.mean(M[:,0], axis = 0)
     #                                                [[100, 0], [100, 100]]], ls = '--'))
     
     return im_list
@@ -53,18 +62,31 @@ class Model():
     # g (mouton1, mouton2)
     self.g = lambda m1, m2 : np.sin( np.angle((m1[0] - m2[0])[0] + (m1[0] - m2[0])[1]*1j) - m1[1,1])
     self.D = bruit
-    self.eps = lambda size = None : np.random.uniform(size = size) - 0.5
+    self.eps = lambda size = None : rng.random(size = size) - 0.5
 
 
   def G(self, M): # M matrice 3D de population de moutons (shape N, 2, 2)
+    L = 1000
+  
     calc = np.array([[M[i,0] - M[j,0] for j in range(M.shape[0])] for i in range(M.shape[0])]) #SI PEU EFFICACE ! A AMELIORER
-    alpha = np.angle(calc[:,:,0] + calc[:,:,1] * 1j)
+    calc_bis = calc[:,:,0] + calc[:,:,1] * 1j
+    
+    #bruit sur les positions
+    theta_bruit = rng.random(self.n) * 2 * np.pi
+    r_bruit = rng.normal(0, np.absolute(calc_bis)/L)
+    z_bruit = r_bruit * np.exp(1j * theta_bruit)
+    
+    alpha = np.angle(calc_bis+ z_bruit ) 
+    
     return np.sin(alpha - M[:,1,1])
   
-  def quantify(self, M): #WIP
-    True    
-    
-    
+  def quantify(self, M, func = 'files'): #WIP
+      if func == 'files':
+        calc = np.array([[M[i,1, 1] - M[j,1, 1] for j in range(M.shape[0])] for i in range(M.shape[0])]) #SI PEU EFFICACE ! A AMELIORER
+        return (self.A * np.cos(calc)).sum(axis = 1) / self.A.sum(axis = 1)
+      elif func == 'clusters':
+        grav = np.mean(M[:,0], axis = 0)
+        return np.abs((M[:,0] - grav)**2).sum()/self.n
 class Simulation():
   N = 2
   Population = np.empty((N, 2, 2))   #Troupeau de moutons de forme [mouton1, mouton2...] avec mouton = [position, vitesse] avec position cartésienne et vitesse polaire (2D)
@@ -80,7 +102,7 @@ class Simulation():
     self.limite = limites 
     self.N = N
     self.modele = Model(self.N, bruit = bruit)
-    self.Population = np.random.uniform(size = (N, 2, 2))
+    self.Population = rng.random(size = (N, 2, 2))
     self.box_size = box_size
     self.Population[:,0] = (self.Population[:,0] - 0.5)*dispersion + self.box_size/2
     self.Population[:,1,0] = 1
@@ -94,7 +116,7 @@ class Simulation():
     #stock_pop = self.Population.copy()
     
     self.Population[:,1,1] += (self.modele.A * self.modele.G(self.Population)).sum(axis = 0
-                   ) + 2*np.pi*self.modele.D*self.modele.eps(size = (self.N))  #bruit max à 1
+                   ) + 2*np.pi*self.modele.D*self.modele.eps(size = (self.N))  #bruit max à 1, amplifié quand les autres sont loin ? mvt limité à pi/2?
 
     self.Population[:,1,1] %= 2*np.pi
 
@@ -106,25 +128,34 @@ class Simulation():
     if self.limite == 'Align':      #WIP, almost working
       collision_problems = np.count_nonzero((self.Population[:,0] < 0) + (self.Population[:,0] > self.box_size), axis = 1)
       
-      bool_pi = self.Population[:,1, 1] > np.pi
-        
-      bool_x_0 = self.Population[:,0,0] < 0
-      bool_x_b = self.Population[:,0,0] > self.box_size
-      bool_y_0 = self.Population[:,0,1] < 0
-      bool_y_b = self.Population[:,0,1] > self.box_size
-      
-      bool_x_0p = self.Population[:,0,0] > self.Population[:,1,0]
-      bool_y_0p = self.Population[:,0,1] > self.Population[:,1,0]
-      bool_x_bp = self.Population[:,0,0] < (self.box_size - self.Population[:,1,0])
-      bool_y_bp = self.Population[:,0,1] < (self.box_size - self.Population[:,1,0])
+      if np.any(collision_problems):
 
       
-      theta_prime = (np.pi*(  (bool_x_0)*(bool_y_0p*(1- bool_y_bp * bool_pi) + 0.5)
-                            + (bool_x_b)*(bool_y_0p*(1- bool_y_bp * (1 - bool_pi)) + 0.5)
-                            + (bool_y_0)*(bool_x_0p*(1- bool_x_bp * (self.Population[:,1, 1] > (3*np.pi/2))))
-                            + (bool_y_b)*(bool_x_0p*(1- bool_x_bp * (self.Population[:,1, 1] < np.pi/2)))
-                                                                  
-                            ) - self.Population[:,1, 1] )* collision_problems
+          bool_pi = self.Population[:,1, 1] > np.pi
+          bool_3pi_2 = self.Population[:,1, 1] > (3*np.pi/2)
+          bool_pi_2 = self.Population[:,1, 1] < np.pi/2
+          
+            
+          bool_x_0 = self.Population[:,0,0] < 0
+          bool_x_b = self.Population[:,0,0] > self.box_size
+          bool_y_0 = self.Population[:,0,1] < 0
+          bool_y_b = self.Population[:,0,1] > self.box_size
+         
+          bool_x_0p = self.Population[:,0,0] > self.Population[:,1,0]
+          bool_y_0p = self.Population[:,0,1] > self.Population[:,1,0]
+          bool_x_bp = self.Population[:,0,0] < (self.box_size - self.Population[:,1,0])
+          bool_y_bp = self.Population[:,0,1] < (self.box_size - self.Population[:,1,0])
+        
+    
+          theta_prime = (np.pi*(  (bool_x_0)*((bool_y_0p & np.logical_not(bool_y_bp & bool_pi))                 + 0.5)
+                                + (bool_x_b)*((bool_y_0p & np.logical_not(bool_y_bp & np.logical_not(bool_pi))) + 0.5)
+                                + (bool_y_0)*((bool_x_0p & np.logical_not(bool_x_bp & (bool_3pi_2)))                 )
+                                + (bool_y_b)*((bool_x_0p & np.logical_not(bool_x_bp & (bool_pi_2)))                  )
+                                                                      
+                                ) - self.Population[:,1, 1] )* collision_problems
+        
+      else:
+          theta_prime = 0
         
       self.Population[:,0] -= cartesianND(self.Population[:,1])
       
@@ -158,32 +189,38 @@ class Simulation():
     if self.verbose:
       time_0 = time.time()
     
+    alignement = np.empty((n_step+1, self.N), dtype = float)
+    
+    alignement[0] = self.modele.quantify(self.Population)
+    
     if self.affichage and animate :
         figure, ax = plt.subplots(figsize = (10,10))
-        Pops = np.empty((n_step, self.N, 2, 2))
+        Pops = np.empty((n_step+1, self.N, 2, 2))
+        Pops[0] = self.Population.copy()
+
     for k in range(n_step):
       if self.affichage and animate:
-        Pops[k] = self.Population.copy()
+        Pops[k+1] = self.Population.copy()
       elif self.affichage:
         self.affiche_population()
       self.evolve()
+      alignement[k+1] = self.modele.quantify(self.Population)
       print(f'Evolved step {k}')
       
     print(f'Evolved for {n_step} steps')
     if self.verbose:
       time_1 = time.time()
     
-    if self.affichage and animate:
+    if self.affichage and animate:# + gaussienne en fonction de la distance
       ani = m_ani.FuncAnimation(figure, frame_producer, frames = Pops, fargs = (figure, ax, self.box_size), blit = False)
-      
-      #Specific path for spyder usage, beware
-      ani.save('../../' + anim_name + '.mp4')
+      # + gaussienne en fonction de la distance
+      ani.save('Videos_Sheep/' + anim_name + '.mp4')
     elif self.affichage:
       self.affiche_population()
       
     if self.verbose:
       time_2 = time.time()
       
-      print(time_1 - time_0, time_2 - time_1)
-  
-  
+      print(f'Simulation time : {round(time_1 - time_0, 3)}s; animation time : {round(time_2 - time_1, 3)}s')
+      
+    return alignement
