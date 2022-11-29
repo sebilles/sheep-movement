@@ -35,10 +35,6 @@ def frame_producer(Pop, fig, ax, box_size):
 
     im_list.append(ax.hlines([0, box_size], 0, box_size, ls = '--'))
     im_list.append(ax.vlines([0, box_size], 0, box_size, ls = '--'))
-    #im_list.append(mplt.collections.LineCollection([[[0,   0], [0,   100]],
-    #                                                [[0, 100], [100, 100]],
-    #                                                [[0,   0], [100,   0]],grav = np.mean(M[:,0], axis = 0)
-    #                                                [[100, 0], [100, 100]]], ls = '--'))
     
     return im_list
 
@@ -65,15 +61,14 @@ class Model():
     self.eps = lambda size = None : rng.random(size = size) - 0.5
 
 
-  def G(self, M): # M matrice 3D de population de moutons (shape N, 2, 2)
-    L = 1000
+  def G(self, M, L = 1000): # M matrice 3D de population de moutons (shape N, 2, 2)
   
     calc = np.array([[M[i,0] - M[j,0] for j in range(M.shape[0])] for i in range(M.shape[0])]) #SI PEU EFFICACE ! A AMELIORER
     calc_bis = calc[:,:,0] + calc[:,:,1] * 1j
     
     #bruit sur les positions
     theta_bruit = rng.random(self.n) * 2 * np.pi
-    r_bruit = rng.normal(0, np.absolute(calc_bis)/L)
+    r_bruit = rng.normal(0, (np.absolute(calc_bis)/L)**2)
     z_bruit = r_bruit * np.exp(1j * theta_bruit)
     
     alpha = np.angle(calc_bis+ z_bruit ) 
@@ -83,10 +78,14 @@ class Model():
   def quantify(self, M, func = 'files'): #WIP
       if func == 'files':
         calc = np.array([[M[i,1, 1] - M[j,1, 1] for j in range(M.shape[0])] for i in range(M.shape[0])]) #SI PEU EFFICACE ! A AMELIORER
-        return (self.A * np.cos(calc)).sum(axis = 1) / self.A.sum(axis = 1)
+        return (self.A * np.cos(calc)).sum(axis = 1) / np.where(self.A.sum(axis = 1)!=0,
+                                                                self.A.sum(axis = 1), 1)
       elif func == 'clusters':
         grav = np.mean(M[:,0], axis = 0)
         return np.abs((M[:,0] - grav)**2).sum()/self.n
+    
+A_stocker = []
+    
 class Simulation():
   N = 2
   Population = np.empty((N, 2, 2))   #Troupeau de moutons de forme [mouton1, mouton2...] avec mouton = [position, vitesse] avec position cartésienne et vitesse polaire (2D)
@@ -96,11 +95,12 @@ class Simulation():
   limite = None
   box_size = 10    # Univers limité par un carré de côté box_size avec un sommet en (0,0)
   def __init__(self, N = 2, verbose = False, affichage = False, limites = 'BVK',
-               dispersion = 10, box_size = 100, bruit = 0.01):   #Pour le moment bruit max à 1 et min à 0
+               dispersion = 10, box_size = 100, bruit = 0.01, vision = 100):   #Pour le moment bruit max à 1 et min à 0
     self.verbose = verbose
     self.affichage = affichage
     self.limite = limites 
     self.N = N
+    self.L= vision #distance caractéristique de vision du mouton
     self.modele = Model(self.N, bruit = bruit)
     self.Population = rng.random(size = (N, 2, 2))
     self.box_size = box_size
@@ -112,10 +112,25 @@ class Simulation():
     if self.verbose :
       print(f'Initialisation de la simulation avec {N} moutons et des limites de type {limites}')
   
-  def evolve(self):
+  def evolve(self, evolve_A = False):
     #stock_pop = self.Population.copy()
     
-    self.Population[:,1,1] += (self.modele.A * self.modele.G(self.Population)).sum(axis = 0
+    if evolve_A:
+        r = 2
+        delta = 0.0001
+        C = self.Population[:,0, 0] + self.Population[:,0,1]*1j
+        xx, yy = np.meshgrid(C, C)
+        R = np.absolute(xx - yy)
+        T = np.angle(xx-yy)
+        L = ((R > 0) & (R < r)) & ((T  < (np.pi / 4)) & (T > (-np.pi / 4)))
+        self.modele.A += L * delta
+        self.modele.A = np.round(self.modele.A  / np.where(self.modele.A.sum(axis = 1)!=0,
+                                                  self.modele.A.sum(axis = 1), 1), 5)
+        A_stocker.append(self.modele.A)
+    
+    
+    self.Population[:,1,1] += (self.modele.A * self.modele.G(self.Population, 
+                                                             L = self.L)).sum(axis = 0
                    ) + 2*np.pi*self.modele.D*self.modele.eps(size = (self.N))  #bruit max à 1, amplifié quand les autres sont loin ? mvt limité à pi/2?
 
     self.Population[:,1,1] %= 2*np.pi
@@ -184,7 +199,7 @@ class Simulation():
         plt.show()
     else:
         return [fig.gca()]
-  def Simulate(self, n_step, animate = False, anim_name = 'Sheep_Sim_Test'):
+  def Simulate(self, n_step, animate = False, anim_name = 'Sheep_Sim_Test', evolve_A = False):
       
     if self.verbose:
       time_0 = time.time()
@@ -203,9 +218,10 @@ class Simulation():
         Pops[k+1] = self.Population.copy()
       elif self.affichage:
         self.affiche_population()
-      self.evolve()
+      self.evolve(evolve_A)
       alignement[k+1] = self.modele.quantify(self.Population)
-      print(f'Evolved step {k}')
+      if self.verbose : 
+          print(f'Evolved step {k}')
       
     print(f'Evolved for {n_step} steps')
     if self.verbose:
@@ -224,3 +240,35 @@ class Simulation():
       print(f'Simulation time : {round(time_1 - time_0, 3)}s; animation time : {round(time_2 - time_1, 3)}s')
       
     return alignement
+
+
+
+
+class Simulation_Pool():
+    
+    def __init__(self, N_sim = 3, N = 4, limites = 'Align', 
+                 dispersion = 10, bruit = 0.01, vision = 100):
+        self.N_sim = N_sim
+        self.N = N
+        self.limite = limites 
+        self.L= vision 
+        self.dispersion = dispersion
+        self.bruit = bruit
+        self.Sims_created = False
+        self.simulated = False
+    def stat_pool(self):
+        self.Sims = [Simulation(N = self.N, limites = self.limite,
+                     dispersion = self.dispersion, bruit = self.bruit,
+                     vision = self.L) for i in range(self.N_sim)]
+        self.Sims_created = True 
+    
+    def N_pool(self, N_list):
+        self.Sims = [Simulation(N = N_list[i], limites = self.limite,
+                     dispersion = self.dispersion, bruit = self.bruit,
+                     vision = self.L) for i in range(self.N_sim)]
+        self.Sims_created = True 
+
+
+    def full_Simulate(self, n_step):
+        self.simulated = True
+        return [self.Sims[i].Simulate(n_step) for i in range(self.N_sim)]
