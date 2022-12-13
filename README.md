@@ -6,3 +6,5 @@ Accessible through : https://amor.cms.hu-berlin.de/~gomezlui/publications.html o
 
 
 In order to run the program, please make sure that a folder named 'Videos_Sheep' exists in the working directory, or edit the path in Simulation.Simulate().
+
+The RNG's seed is fixed to 0 on the start of classes_def.py; you can deactivate this if you want more randomness on your results.
